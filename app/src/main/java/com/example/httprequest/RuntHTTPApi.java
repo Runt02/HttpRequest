@@ -9,6 +9,21 @@ import com.zhy.http.okhttp.OkHttpUtils;
 import com.zhy.http.okhttp.builder.PostFormBuilder;
 import com.zhy.http.okhttp.callback.StringCallback;
 
+import org.apache.commons.httpclient.HttpClient;
+import org.apache.commons.httpclient.HttpStatus;
+import org.apache.commons.httpclient.methods.PostMethod;
+import org.apache.commons.httpclient.methods.multipart.FilePart;
+import org.apache.commons.httpclient.methods.multipart.MultipartRequestEntity;
+import org.apache.commons.httpclient.methods.multipart.Part;
+import org.apache.commons.httpclient.methods.multipart.StringPart;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.mime.HttpMultipartMode;
+import org.apache.http.entity.mime.MultipartEntity;
+import org.apache.http.entity.mime.content.FileBody;
+import org.apache.http.entity.mime.content.StringBody;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.util.EntityUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -24,10 +39,12 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -67,13 +84,13 @@ public class RuntHTTPApi {
 	 * @param params
 	 * @return
 	 */
-	public static Map<String, Object> toReApi(String lastUrl, Map<String, String> params){
+	public static  Object toReApi(String lastUrl, Map<String, String> params){
 		String url = SERVER_URL+lastUrl;
 		System.out.println("---------------传输的数据-------------------");
 		System.out.println("url:"+url);
 		printMap(params, "");
 		String jsonStr = submitPostData(url,params,CHARSET);
-		return parseJsonToMap(jsonStr);
+		return parseJson(jsonStr);
 	}
 
 	/**
@@ -90,6 +107,126 @@ public class RuntHTTPApi {
 		return jsonStr;
 	}
 
+
+    /**
+     * MultipartEntity 多文件加参数传递
+     * @param lastUrl
+     * @param params
+     * @return
+     */
+    public static Object toReApiMultiUploadPart(String lastUrl,Map<String, Object>params) {
+        params.put("submit", "1");
+        String targetURL = SERVER_URL+lastUrl;
+        System.out.println("---------------传输的数据-------------------");
+        System.out.println("url:"+targetURL);
+        printMap(params, "");
+        org.apache.http.client.HttpClient client=new DefaultHttpClient();// 开启一个客户端 HTTP 请求
+        HttpPost post = new HttpPost(targetURL);//创建 HTTP POST 请求
+        MultipartEntity multipart = new MultipartEntity(HttpMultipartMode.BROWSER_COMPATIBLE,null, Charset.forName("UTF-8"));
+        try {
+            for (String key : params.keySet()) {
+                if (params.get(key) instanceof Collection) {
+                    for(File file : (Collection<File>)params.get(key)){
+                        multipart.addPart(key, new FileBody(file));
+                    }
+                } else if(params.get(key) instanceof File) {
+                    multipart.addPart(key, new FileBody((File) params.get(key)));
+                } else {
+                    multipart.addPart(key, new StringBody(params.get(key).toString(), Charset.forName("UTF-8")));
+                }
+            }
+            post.setEntity(multipart);
+            HttpResponse response = client.execute(post);
+            int status = response.getStatusLine().getStatusCode();
+            System.out.println("网络请求状态:"+status);
+            if (status == HttpURLConnection.HTTP_OK) {
+                String resultStr = EntityUtils.toString(response.getEntity()).toString();
+                return parseJson(resultStr);
+            }else if(status == HttpURLConnection.HTTP_CLIENT_TIMEOUT){
+                System.out.println("链接超时。。。。。。");
+                return "链接超时。。。。。。";
+            }else if(status == HttpURLConnection.HTTP_SERVER_ERROR){
+                System.out.println("网络服务错误。。。。。。");
+				return "网络服务错误。。。。。。";
+            }else if(status == HttpURLConnection.HTTP_NOT_FOUND){
+                System.out.println("链接不到服务器。。。。。。");
+				return "链接不到服务器。。。。。。";
+            }
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    /**
+     * filePost Part[]多文件加参数传递
+     * @param params
+     * @return
+     */
+    public static Object toReApiMultiUpload(String lastUrl, Map<String, Object> params) {
+        PostMethod filePost = new PostMethod(SERVER_URL+lastUrl);
+        // filePost.setRequestHeader("Content-type", "multipart/form-data");
+        try {
+            params.put("submit", "1");
+            int size = params.size() ;
+            for(Object obj : params.values()){
+                if(obj instanceof Collection){
+                    size += (((Collection)obj).size()-1);
+                }
+            }
+            Part[] parts = new Part[size];
+            System.out.println("----------------\n插入的数据：");
+            printMap(params, "");
+            System.out.println("-----------------\n返回的数据：");
+            int i = 0 ;
+            for (String key : params.keySet()) {
+                if (params.get(key) instanceof Collection) {
+                    for (File file : (Collection<File>) params.get(key)) {
+                        parts[i] = new FilePart(key, file);
+                        i++;
+                    }
+                }else if(params.get(key) instanceof File) {
+                    parts[i] = new FilePart(key, (File) params.get(key));
+                    i++;
+                }  else {
+                    parts[i] = new StringPart(key, params.get(key).toString(),CHARSET);
+                    i++;
+                }
+            }
+            filePost.setRequestEntity(new MultipartRequestEntity(parts,
+                    filePost.getParams()));
+            HttpClient client = new HttpClient();
+            client.getHttpConnectionManager().getParams()
+                    .setConnectionTimeout(5000);
+            int status = client.executeMethod(filePost);
+            if (status == HttpStatus.SC_OK) {
+                System.out.println("上传成功");
+                String jsonStr = filePost.getResponseBodyAsString();
+                System.out.println("jsonStr:"+jsonStr);
+                return parseJson(jsonStr);
+                // 上传成功
+            }else if(status == HttpURLConnection.HTTP_CLIENT_TIMEOUT){
+				System.out.println("链接超时。。。。。。");
+				return "链接超时。。。。。。";
+			}else if(status == HttpURLConnection.HTTP_SERVER_ERROR){
+				System.out.println("网络服务错误。。。。。。");
+				return "网络服务错误。。。。。。";
+			}else if(status == HttpURLConnection.HTTP_NOT_FOUND){
+				System.out.println("链接不到服务器。。。。。。");
+				return "链接不到服务器。。。。。。";
+			}
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        } finally {
+            filePost.releaseConnection();
+        }
+
+        // printMap(params, "");
+        System.out.println("-----------------\n返回的数据：");
+        return null;
+
+    }
 
 	/**
 	 *  okhttp访问接口,多文件加参数传递
@@ -123,7 +260,7 @@ public class RuntHTTPApi {
 	}
 
 	/**
-	 *  访问接口,多文件加参数传递
+	 *  okhttp访问接口,多文件加参数传递
 	 * @param lastUrl
 	 * @param params
 	 * @param stringCallback
@@ -232,11 +369,11 @@ public class RuntHTTPApi {
 	/**
 	 *  单独文件上传
 	 */
-	public static Map<String, Object> uploadFile(String urlstr, File file) {
+	public static Object uploadFile(String urlstr, File file) {
 		urlstr = "http://ly.renrenws.com/test2/UploadFile";
 		int res = 0;
         Log.e(TAG, "urlstr : " + urlstr);
-        Map<String, Object> result = null;
+        Object result = null;
         String BOUNDARY = UUID.randomUUID().toString(); // 边界标识 随机生成
         String PREFIX = "--", LINE_END = "\r\n";
         String CONTENT_TYPE = "multipart/form-data"; // 内容类型
@@ -305,7 +442,7 @@ public class RuntHTTPApi {
                         sb1.append((char) ss);
                     }
                     String resultstr = sb1.toString();
-                    result = parseJsonToMap(resultstr);
+                    result = parseJson(resultstr);
                     Log.i(TAG, "result : " + result);
                 } else {
                     Log.e(TAG, "request error");
@@ -319,6 +456,20 @@ public class RuntHTTPApi {
         return result;
 	}
 
+    /**
+     * 输出打印
+     * @param obj
+     * @param space
+     */
+	public static void printObj(Object obj ,String space){
+	    if(obj instanceof Map){
+	        printMap((Map)obj,space);
+        }else if(obj instanceof Collection){
+	        printCollection((Collection)obj,space);
+        }else{
+            System.out.println(obj);
+        }
+    }
 
 	/**
 	 * 输出打印map集合
@@ -449,8 +600,8 @@ public class RuntHTTPApi {
 	 * Created by EDZ on 2018/1/15.
 	 */
 	public abstract static class ResPonse {
-		public abstract void doSuccessThing(Map<String,Object> param);
-		public abstract void doErrorThing(Map<String,Object> param);
+		public abstract void doSuccessThing(Object param);
+		public abstract void doErrorThing(Object param);
 	}
 
 	/**
@@ -485,25 +636,28 @@ public class RuntHTTPApi {
 					try {
 						jsonObject = new JSONObject(response);
 						String jsonstr = jsonObject.toString();
-						Map<String,Object> param = RuntHTTPApi.parseJsonToMap(jsonstr);
-						RuntHTTPApi.printMap(param," ");
-						Object message = param.get(KEY_MES_MESSAGE);//获取错误信息
-						Log.i(TAG,param.toString());
+						Object param =parseJson(jsonstr);
+						printObj(param," ");
+						if(param instanceof List){
 
-						if(message == null){
-							message = jsonstr;
-						}
-						if (KEY_CODE_SUCCESS.equals(param.get(KEY_MES_CODE))) {//判断获取数据是否成功
-							if(resPonse!=null) {
-								resPonse.doSuccessThing(param);
-							}
-						}else{
-							Toast.makeText(mContext, message + "", Toast.LENGTH_SHORT).show();
-							if(resPonse!=null) {
-								//showTipDialog(message.toString());
-								resPonse.doErrorThing(param);
-							}
-						}
+                            Object message = ((List<Map>)param).get(0).get(KEY_MES_MESSAGE);//获取错误信息
+                            Log.i(TAG,param.toString());
+
+                            if(message == null){
+                                message = jsonstr;
+                            }
+                            if (KEY_CODE_SUCCESS.equals(((List<Map>)param).get(0).get(KEY_MES_CODE))) {//判断获取数据是否成功
+                                if(resPonse!=null) {
+                                    resPonse.doSuccessThing(param);
+                                }
+                            }else{
+                                Toast.makeText(mContext, message + "", Toast.LENGTH_SHORT).show();
+                                if(resPonse!=null) {
+                                    //showTipDialog(message.toString());
+                                    resPonse.doErrorThing(param);
+                                }
+                            }
+                        }
 					} catch (JSONException e) {
 						e.printStackTrace();
 					}
