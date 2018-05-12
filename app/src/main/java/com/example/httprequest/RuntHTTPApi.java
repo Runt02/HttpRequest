@@ -123,7 +123,7 @@ public class RuntHTTPApi {
 	}
 
 	/**
-	 *  okhttp访问接口,多文件加参数传递
+	 *  访问接口,多文件加参数传递
 	 * @param lastUrl
 	 * @param params
 	 * @param stringCallback
@@ -152,6 +152,28 @@ public class RuntHTTPApi {
 		}
 	}
 
+	/**
+	 *
+	 * @param jsonStr
+	 * @return
+	 */
+	public static Object parseJson(String jsonStr){
+		Object obj =null;
+
+		if(jsonStr.indexOf('[')==0){
+			try {
+				obj = parseJsonToCollection(new JSONArray(jsonStr));
+			} catch (JSONException e) {
+				e.printStackTrace();
+			}
+		}else if(jsonStr.indexOf('{')==0){
+			obj = parseJsonToMap(jsonStr);
+		}else{
+			obj = jsonStr;
+		}
+		return obj;
+	}
+
 
 	/**
 	 * 解析json字符串
@@ -170,7 +192,7 @@ public class RuntHTTPApi {
 				try {
 					String str = value.toString();
 					if(str.indexOf('[')==0){
-						value = parseJsonToCollection(key,jsonObject.getJSONArray(key));
+						value = parseJsonToCollection(jsonObject.getJSONArray(key));
 
 					}else{
 						JSONObject tempJson = new JSONObject(value.toString());// 解析字符串
@@ -190,11 +212,11 @@ public class RuntHTTPApi {
 
 
 	/**
-	 * 解析json字符串
-	 * @param key
+	 * 解析json字符串数组
+	 * @param jsonList
 	 * @returnCollection
 	 */
-	public static Collection<Map<String,Object>> parseJsonToCollection(String key, JSONArray jsonList){
+	public static Collection<Map<String,Object>> parseJsonToCollection(JSONArray jsonList){
 		Collection<Map<String,Object>> list = new LinkedList<Map<String,Object>>();
 		try {
 			for(int i = 0; i < jsonList.length(); ++i) {
@@ -343,7 +365,7 @@ public class RuntHTTPApi {
 	/*
          * Function : 发送Post请求到服务器 Param : params请求体内容，encode编码格式
          */
-	public static String submitPostData(String strUrlPath,
+	private static String submitPostData(String strUrlPath,
 										Map<String,String> params, String encode) {
 		Log.i("接口路径：",strUrlPath.toString());
 		Log.i("接口参数",params.toString());
@@ -386,7 +408,7 @@ public class RuntHTTPApi {
 	/*
 	 * Function : 封装请求体信息 Param : params请求体内容，encode编码格式
 	 */
-	public static StringBuffer getRequestData(Map<String,String> params,
+	private static StringBuffer getRequestData(Map<String,String> params,
 											  String encode) {
 		StringBuffer stringBuffer = new StringBuffer(); // 存储封装好的请求体信息
 		try {
